@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>高强螺栓扭矩计算器</title>
+    <style>
+        :root {
+            --item-h: 40px;
+            --bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-main: #2c3e50;
+            --text-sub: #8fa3b8;
+            --accent: #3b82f6;
+            --border: rgba(0,0,0,0.06);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; touch-action: none; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, sans-serif;
+            background: var(--bg);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 12px 16px 8px;
+            text-align: center;
+            background: var(--card-bg);
+        }
+        .header h1 { font-size: 15px; color: var(--text-main); font-weight: 700; line-height: 1.3; }
+        .header p { font-size: 9px; color: var(--text-sub); margin-top: 3px; letter-spacing: 0.5px; }
+
+        .picker-section {
+            flex: none;
+            display: flex;
+            flex-direction: column;
+            background: var(--card-bg);
+            margin: 8px;
+            border-radius: 14px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            overflow: hidden;
+        }
+
+        .col-labels {
+            display: flex;
+            padding: 8px 0 4px;
+            border-bottom: 1px solid var(--border);
+        }
+        .col-label {
+            flex: 1;
+            text-align: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-sub);
+            letter-spacing: 0.3px;
+        }
+
+        .wheels-wrap {
+            height: calc(var(--item-h) * 3);
+            display: flex;
+            position: relative;
+        }
+
+        .selector-mask {
+            position: absolute;
+            top: 50%; left: 0; right: 0;
+            height: var(--item-h);
+            transform: translateY(-50%);
+            border-top: 1.5px solid rgba(59,130,246,0.25);
+            border-bottom: 1.5px solid rgba(59,130,246,0.25);
+            background: rgba(59,130,246,0.03);
+            pointer-events: none;
+            z-index: 2;
+            border-radius: 4px;
+            margin: 0 4px;
+        }
+
+        .wheel-col {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+        .wheel-col:active { cursor: grabbing; }
+
+        .wheel-track {
+            position: absolute;
+            top: 0; left: 0; width: 100%;
+            will-change: transform;
+        }
+
+        .wheel-item {
+            height: var(--item-h);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 500;
+            border-radius: 6px;
+            margin: 0 3px;
+            white-space: nowrap;
+            opacity: 0;
+        }
+
+        .result-section {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            padding: 8px;
+            padding-bottom: max(8px, env(safe-area-inset-bottom));
+            align-content: start;
+        }
+
+        .res-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 16px 8px;
+            text-align: center;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .res-label { font-size: 11px; color: var(--text-sub); margin-bottom: 6px; font-weight: 500; }
+        .res-val { 
+            font-size: 26px; 
+            font-weight: 800; 
+            color: var(--accent); 
+            font-variant-numeric: tabular-nums;
+            line-height: 1.1;
+        }
+        .res-unit { font-size: 10px; color: var(--text-sub); font-weight: 400; margin-left: 2px; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>GB/T1231 钢结构专用高强螺栓扭矩计算表</h1>
+    <p>GB 5782螺栓只做参考 · 应以设计为准</p>
+</div>
+
+<div class="picker-section">
+    <div class="col-labels">
+        <div class="col-label">螺栓直径</div>
+        <div class="col-label">等级</div>
+        <div class="col-label">粗牙螺距</div>
+        <div class="col-label">扭矩系数</div>
+    </div>
+    
+    <div class="wheels-wrap" id="wheelsWrap">
+        <div class="selector-mask"></div>
+    </div>
+</div>
+
+<div class="result-section">
+    <div class="res-card">
+        <div class="res-label">施工扭矩计算值</div>
+        <div class="res-val"><span id="vCalc">--</span><span class="res-unit">N·m</span></div>
+    </div>
+    <div class="res-card">
+        <div class="res-label">施工扭矩常用值</div>
+        <div class="res-val"><span id="vCommon">--</span><span class="res-unit">N·m</span></div>
+    </div>
+</div>
+
+<script>
+/**
+ * 颜色配置 (严格按用户指定)
+ * 白色文字添加深色描边确保可读性
+ */
+const COLORS = {
+    white:      { color: '#FFFFFF', shadow: '0 0 2px #333, 0 0 4px rgba(0,0,0,0.5)' },
+    yellow:     { color: '#FFD700', shadow: 'none' },
+    red:        { color: '#FF0000', shadow: 'none' },
+    black:      { color: '#000000', shadow: 'none' },
+    darkGreen:  { color: '#006400', shadow: 'none' },
+    purple:     { color: '#800080', shadow: 'none' },
+    skyBlue:    { color: '#00BFFF', shadow: 'none' },
+    lightGray:  { color: '#A9A9A9', shadow: 'none' },
+    brown:      { color: '#8B4513', shadow: 'none' },
+};
+
+function getColorStyle(colorKey) {
+    const c = COLORS[colorKey];
+    if (!c) return `color:var(--text-main);`;
+    const shadow = c.shadow !== 'none' ? `text-shadow:${c.shadow};` : '';
+    return `color:${c.color};${shadow}`;
+}
+
+/**
+ * 数据配置
+ * 螺栓直径 & 粗牙螺距: 按用户指定颜色逐行设置
+ * 等级: 无颜色 | 扭矩系数: 仅0.13绿色，其余灰色
+ */
+const CONFIG = {
+    diameter: [
+        { text: '10', param: 10, colorKey: 'white' },
+        { text: '12', param: 12, colorKey: 'yellow' },
+        { text: '14', param: 14, colorKey: 'red' },
+        { text: '16', param: 16, colorKey: 'red' },
+        { text: '18', param: 18, colorKey: 'black' },
+        { text: '20', param: 20, colorKey: 'black' },
+        { text: '22', param: 22, colorKey: 'black' },
+        { text: '24', param: 24, colorKey: 'darkGreen' },
+        { text: '27', param: 27, colorKey: 'darkGreen' },
+        { text: '30', param: 30, colorKey: 'purple' },
+        { text: '33', param: 33, colorKey: 'purple' },
+        { text: '36', param: 36, colorKey: 'skyBlue' },
+        { text: '39', param: 39, colorKey: 'skyBlue' },
+        { text: '42', param: 42, colorKey: 'lightGray' },
+        { text: '45', param: 45, colorKey: 'lightGray' },
+        { text: '48', param: 48, colorKey: 'brown' },
+        { text: '52', param: 52, colorKey: 'brown' },
+    ],
+    grade: [
+        { text: '4.8',   param: 320,  colorKey: null },
+        { text: '8.8',   param: 640,  colorKey: null },
+        { text: '8.8S',  param: 640,  colorKey: null },
+        { text: '10.9',  param: 900,  colorKey: null },
+        { text: '10.9S', param: 900,  colorKey: null },
+        { text: '12.9',  param: 1080, colorKey: null },
+        { text: '4.8',   param: 320,  colorKey: null },
+        { text: '8.8',   param: 640,  colorKey: null },
+        { text: '8.8S',  param: 640,  colorKey: null },
+        { text: '10.9',  param: 900,  colorKey: null },
+        { text: '10.9S', param: 900,  colorKey: null },
+        { text: '12.9',  param: 1080, colorKey: null },
+        { text: '4.8',   param: 320,  colorKey: null },
+        { text: '8.8',   param: 640,  colorKey: null },
+        { text: '8.8S',  param: 640,  colorKey: null },
+        { text: '10.9',  param: 900,  colorKey: null },
+        { text: '10.9S', param: 900,  colorKey: null },
+    ],
+    pitch: [
+        // 前9项: 用户指定颜色
+        { text: '1.5',  param: 1.5,  colorKey: 'white' },
+        { text: '1.75', param: 1.75, colorKey: 'yellow' },
+        { text: '2.0',  param: 2.0,  colorKey: 'red' },
+        { text: '2.5',  param: 2.5,  colorKey: 'black' },
+        { text: '3.0',  param: 3.0,  colorKey: 'darkGreen' },
+        { text: '3.5',  param: 3.5,  colorKey: 'purple' },
+        { text: '4.0',  param: 4.0,  colorKey: 'skyBlue' },
+        { text: '4.5',  param: 4.5,  colorKey: 'lightGray' },
+        { text: '5.0',  param: 5.0,  colorKey: 'brown' },
+        // 后8项: 凑数重复项，循环复用上述颜色规则
+        { text: '1.5',  param: 1.5,  colorKey: 'white' },
+        { text: '1.75', param: 1.75, colorKey: 'yellow' },
+        { text: '2.0',  param: 2.0,  colorKey: 'red' },
+        { text: '2.5',  param: 2.5,  colorKey: 'black' },
+        { text: '3.0',  param: 3.0,  colorKey: 'darkGreen' },
+        { text: '3.5',  param: 3.5,  colorKey: 'purple' },
+        { text: '4.0',  param: 4.0,  colorKey: 'skyBlue' },
+        { text: '4.5',  param: 4.5,  colorKey: 'lightGray' },
+    ],
+    torqueCoeff: [
+        { text: '0.11', param: 0.11, textColor: '#808080' },
+        { text: '0.12', param: 0.12, textColor: '#808080' },
+        { text: '0.13', param: 0.13, textColor: '#548235' },
+        { text: '0.14', param: 0.14, textColor: '#808080' },
+        { text: '0.15', param: 0.15, textColor: '#808080' },
+        { text: '0.11', param: 0.11, textColor: '#808080' },
+        { text: '0.12', param: 0.12, textColor: '#808080' },
+        { text: '0.13', param: 0.13, textColor: '#548235' },
+        { text: '0.14', param: 0.14, textColor: '#808080' },
+        { text: '0.15', param: 0.15, textColor: '#808080' },
+        { text: '0.11', param: 0.11, textColor: '#808080' },
+        { text: '0.12', param: 0.12, textColor: '#808080' },
+        { text: '0.13', param: 0.13, textColor: '#548235' },
+        { text: '0.14', param: 0.14, textColor: '#808080' },
+        { text: '0.15', param: 0.15, textColor: '#808080' },
+        { text: '0.11', param: 0.11, textColor: '#808080' },
+        { text: '0.12', param: 0.12, textColor: '#808080' },
+    ]
+};
+
+const STATE = { diameter: 7, grade: 4, pitch: 6, torqueCoeff: 2 };
+const ITEM_H = 40;
+const CLONE_COUNT = 30;
+
+/* ==================== 音效引擎 ==================== */
+let actx = null;
+function initAudio() {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+}
+function tick() {
+    if (!actx) return;
+    try {
+        const t = actx.currentTime;
+        const osc = actx.createOscillator();
+        const g = actx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1200, t);
+        osc.frequency.exponentialRampToValueAtTime(600, t + 0.025);
+        g.gain.setValueAtTime(0.08, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+        osc.connect(g).connect(actx.destination);
+        osc.start(t);
+        osc.stop(t + 0.03);
+    } catch(e){}
+}
+
+/* ==================== 无限循环滚轮引擎 ==================== */
+class InfiniteWheel {
+    constructor(parent, key, data, initIdx) {
+        this.key = key;
+        this.data = data;
+        this.len = data.length;
+        this.centerBlock = Math.floor(CLONE_COUNT / 2);
+        this.currentRealIdx = initIdx;
+        
+        this.col = document.createElement('div');
+        this.col.className = 'wheel-col';
+        this.track = document.createElement('div');
+        this.track.className = 'wheel-track';
+        this.col.appendChild(this.track);
+        parent.appendChild(this.col);
+        
+        this.render();
+        this.y = 0;
+        this.snapToReal(this.currentRealIdx, false);
+        this.bindDrag();
+    }
+
+    render() {
+        let html = '';
+        for (let c = 0; c < CLONE_COUNT; c++) {
+            this.data.forEach((d) => {
+                // 兼容两种颜色配置方式: colorKey(新) / textColor(旧)
+                let style;
+                if (d.colorKey !== undefined) {
+                    style = d.colorKey ? getColorStyle(d.colorKey) : `color:var(--text-main);`;
+                } else {
+                    style = d.textColor ? `color:${d.textColor};` : `color:var(--text-main);`;
+                }
+                html += `<div class="wheel-item" style="${style}">${d.text}</div>`;
+            });
+        }
+        this.track.innerHTML = html;
+        this.items = this.track.querySelectorAll('.wheel-item');
+    }
+
+    get halfView() { return this.col.clientHeight / 2; }
+
+    snapToReal(realIdx, animate = true) {
+        this.currentRealIdx = ((realIdx % this.len) + this.len) % this.len;
+        const targetItemIndex = this.centerBlock * this.len + this.currentRealIdx;
+        const targetY = -(targetItemIndex * ITEM_H) + this.halfView - (ITEM_H / 2);
+        
+        this.y = targetY;
+        this.track.style.transition = animate ? 'transform 0.2s cubic-bezier(0.25,0.1,0.25,1)' : 'none';
+        this.track.style.transform = `translateY(${this.y}px)`;
+        this.updateVisibility();
+        
+        if (animate) {
+            setTimeout(() => { this.track.style.transition = 'none'; }, 220);
+        }
+    }
+
+    updateVisibility() {
+        const centerY = this.halfView;
+        const centerItemIdx = Math.round((-(this.y) + centerY - ITEM_H / 2) / ITEM_H);
+        
+        this.items.forEach((el, idx) => {
+            const dist = Math.abs(idx - centerItemIdx);
+            if (dist === 0) {
+                el.style.opacity = '1';
+                el.style.transform = 'scale(1)';
+                el.style.fontWeight = '700';
+            } else if (dist === 1) {
+                el.style.opacity = '0.35';
+                el.style.transform = 'scale(0.9)';
+                el.style.fontWeight = '500';
+            } else {
+                el.style.opacity = '0';
+                el.style.transform = 'scale(0.8)';
+            }
+        });
+    }
+
+    bindDrag() {
+        let startY, startYY, dragging = false, lastTickY;
+        
+        const down = (e) => {
+            initAudio();
+            dragging = true;
+            startY = e.touches ? e.touches[0].clientY : e.clientY;
+            startYY = this.y;
+            lastTickY = startYY;
+            this.track.style.transition = 'none';
+        };
+        
+        const move = (e) => {
+            if (!dragging) return;
+            e.preventDefault();
+            const cy = e.touches ? e.touches[0].clientY : e.clientY;
+            this.y = startYY + (cy - startY);
+            this.track.style.transform = `translateY(${this.y}px)`;
+            
+            const delta = Math.abs(this.y - lastTickY);
+            if (delta >= ITEM_H) {
+                tick();
+                lastTickY = this.y > lastTickY ? lastTickY + ITEM_H : lastTickY - ITEM_H;
+            }
+            this.updateVisibility();
+        };
+        
+        const up = () => {
+            if (!dragging) return;
+            dragging = false;
+            
+            const rawIdx = Math.round((-(this.y) + this.halfView - ITEM_H / 2) / ITEM_H);
+            const realIdx = ((rawIdx % this.len) + this.len) % this.len;
+            
+            if (realIdx !== this.currentRealIdx) tick();
+            
+            this.snapToReal(realIdx, true);
+            STATE[this.key] = realIdx;
+            calc();
+        };
+
+        this.col.addEventListener('mousedown', down);
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+        this.col.addEventListener('touchstart', down, { passive: false });
+        this.col.addEventListener('touchmove', move, { passive: false });
+        this.col.addEventListener('touchend', up);
+    }
+}
+
+/* ==================== 计算引擎 ==================== */
+function calc() {
+    const d  = CONFIG.diameter[STATE.diameter].param;
+    const fy = CONFIG.grade[STATE.grade].param;
+    const p  = CONFIG.pitch[STATE.pitch].param;
+    const k  = CONFIG.torqueCoeff[STATE.torqueCoeff].param;
+
+    const as_ = 0.7854 * Math.pow(d - 0.9382 * p, 2);
+    const tc = 0.0007 * fy * as_ * k * d;
+    const tn = 0.000091 * fy * as_ * d;
+
+    document.getElementById('vCalc').textContent   = tc.toFixed(2);
+    document.getElementById('vCommon').textContent = tn.toFixed(2);
+}
+
+/* ==================== 初始化 ==================== */
+window.addEventListener('DOMContentLoaded', () => {
+    const wrap = document.getElementById('wheelsWrap');
+    new InfiniteWheel(wrap, 'diameter',    CONFIG.diameter,    STATE.diameter);
+    new InfiniteWheel(wrap, 'grade',       CONFIG.grade,       STATE.grade);
+    new InfiniteWheel(wrap, 'pitch',       CONFIG.pitch,       STATE.pitch);
+    new InfiniteWheel(wrap, 'torqueCoeff', CONFIG.torqueCoeff, STATE.torqueCoeff);
+    calc();
+});
+</script>
+</body>
+</html>
